@@ -475,6 +475,10 @@ class AOSDriver(NetworkDriver):
         output = self.device.send_command(command)
         iface_capability_table = AOSTable(output)
 
+        command = 'show interfaces alias'
+        output = self.device.send_command(command)
+        iface_alias_table = AOSTable(output)
+
         for key in raw_interfaces_dict.keys():
             m_iface = re.findall(INTERFACE_REGEX_1, key)
             iface = m_iface[0] if m_iface else re.findall(
@@ -490,6 +494,10 @@ class AOSDriver(NetworkDriver):
 
             cid = iface_capability_table.get_id_by_value(0,
                                                          iface)  # Name column
+
+            aid = iface_alias_table.get_id_by_value(0, iface)
+            description= iface_alias_table.get_column_by_index(5)[aid].replace('"','')
+
             if cid != -1:
                 speed_str = iface_capability_table.get_column_by_name('Speed')[
                     cid]
