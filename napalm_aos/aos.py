@@ -54,7 +54,7 @@ IPV4_ADDR_REGEX = IP_ADDR_REGEX
 IPV6_ADDR_REGEX_1 = r"::"
 IPV6_ADDR_REGEX_2 = r"[0-9a-fA-F:]{1,39}::[0-9a-fA-F:]{1,39}"
 IPV6_ADDR_REGEX_3 = r"[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:" \
-                     "[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}"
+    "[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}:[0-9a-fA-F]{1,3}"
 # Should validate IPv6 address using an IP address library after matching with this regex
 IPV6_ADDR_REGEX = "(?:{}|{}|{})".format(IPV6_ADDR_REGEX_1, IPV6_ADDR_REGEX_2,
                                         IPV6_ADDR_REGEX_3)
@@ -348,7 +348,8 @@ class AOSDriver(NetworkDriver):
         """
         arp_table = []
         command = 'show arp'
-        if vrf: command = 'vrf ' + vrf +' show arp'
+        if vrf:
+            command = 'vrf ' + vrf + ' show arp'
 
         output = self.device.send_command(command)
         if len(output.strip()) == 0:
@@ -479,6 +480,15 @@ class AOSDriver(NetworkDriver):
         output = self.device.send_command(command)
         iface_alias_table = AOSTable(output)
 
+        command = 'show linkagg'
+        output = self.device.send_command(command)
+        linkagg_table = AOSTable(output)
+
+        command = 'show linkagg port'
+        output = self.device.send_command(command)
+        linkagg_port_table = AOSTable(output)
+
+        # query regular (physical) interfaces
         for key in raw_interfaces_dict.keys():
             m_iface = re.findall(INTERFACE_REGEX_1, key)
             iface = m_iface[0] if m_iface else re.findall(
@@ -496,7 +506,8 @@ class AOSDriver(NetworkDriver):
                                                          iface)  # Name column
 
             aid = iface_alias_table.get_id_by_value(0, iface)
-            description= iface_alias_table.get_column_by_index(5)[aid].replace('"','')
+            description = iface_alias_table.get_column_by_index(5)[
+                aid].replace('"', '')
 
             if cid != -1:
                 speed_str = iface_capability_table.get_column_by_name('Speed')[
@@ -510,7 +521,8 @@ class AOSDriver(NetworkDriver):
                     speed = (speed * 1000)
             mac_address = raw_interfaces_dict[key]['MAC address']
             mac_address = mac_address.strip().replace(',', '')
-            mtu: int = int(raw_interfaces_dict[key]['Long Frame Size(Bytes)'].strip()[:-1])
+            mtu: int = int(
+                raw_interfaces_dict[key]['Long Frame Size(Bytes)'].strip()[:-1])
             interfaces[iface] = {
                 'is_enabled': is_enabled,
                 'is_up': is_up,
@@ -520,6 +532,33 @@ class AOSDriver(NetworkDriver):
                 'mtu': mtu,
                 'speed': speed
             }
+
+        # query linkaggs and add them to the interface list
+        for index, lag_id in enumerate(linkagg_table.get_column_by_name("Number")):
+            # print(linkagg_table.get_column_by_name('Oper State')[index])
+            if (linkagg_table.get_column_by_name('Oper State')[index] == 'UP'):
+                lag_ports = []
+
+                linkagg_name = "0/" + lag_id
+
+                for index_if, agg_port in enumerate(linkagg_port_table.get_column_by_name("Agg")):
+                    if (lag_id) == agg_port:
+                        # print(linkagg_port_table.get_column_by_name("Chassis/Slot/Port")[index_if])
+                        lag_ports.append(linkagg_port_table.get_column_by_name(
+                            "Chassis/Slot/Port")[index_if])
+
+                interfaces[linkagg_name] = {
+                    'type': 'lag',
+                    'lag_ports': lag_ports,
+                    'is_enabled': is_enabled,
+                    'is_up': is_up,
+                    'description': "Linkagg "+lag_id,
+                    'mac_address': None,
+                    'last_flapped': last_flapped,
+                    'mtu': None,
+                    'speed': speed
+                }
+
         return interfaces
 
     def get_interfaces_counters(self):
@@ -680,10 +719,12 @@ class AOSDriver(NetworkDriver):
                         'System Description'].strip()
                     system_capab = lldp_dict[local_port][chassis][
                         'Capabilities Supported'].strip().split(', ')
-                    system_capab = list(map(lambda itm: itm.replace(',', ''), system_capab))
+                    system_capab = list(
+                        map(lambda itm: itm.replace(',', ''), system_capab))
                     system_enable_capab = lldp_dict[local_port][chassis][
                         'Capabilities Enabled'].strip().split(', ')
-                    system_enable_capab = list(map(lambda itm: itm.replace(',', ''), system_enable_capab))
+                    system_enable_capab = list(
+                        map(lambda itm: itm.replace(',', ''), system_enable_capab))
                     remote_port_description = lldp_dict[local_port][chassis][
                         'Port Description'].strip()
                     port_match = re.match(r".*(Port) (.+)", chassis)
@@ -796,7 +837,8 @@ class AOSDriver(NetworkDriver):
             configured = True
             if ('Status' in server and server['Status'].strip() == "not configured"):
                 configured = False
-            when, delay, offset, jitter, hostpoll, reference_ip, stratum, reachability = ("", "", "", "", "", "", "", "")
+            when, delay, offset, jitter, hostpoll, reference_ip, stratum, reachability = (
+                "", "", "", "", "", "", "", "")
             if configured:
                 when = extract_second(server['Uptime count'])
                 delay = float(extract_second(server['Delay']))
@@ -1361,7 +1403,8 @@ class AOSDriver(NetworkDriver):
                 if routes_tbl.get_column_by_name("Gateway Addr")[index] and not ipaddr:
                     i = index
                     while not ipaddr:
-                        ipaddr = routes_tbl.get_column_by_name("Dest Address")[i - 1]
+                        ipaddr = routes_tbl.get_column_by_name("Dest Address")[
+                            i - 1]
                         i -= 1
                 if destination == ipaddr.strip() and (protocol == '' or
                                                       protocol in _protocol):
@@ -1531,7 +1574,8 @@ class AOSDriver(NetworkDriver):
                 remote_as = v6_bgp_neighbor_tbl.get_column_by_name("As")[index]
                 remote_id = v6_bgp_neighbor_tbl.get_column_by_name("BGP Id")[
                     index]
-                uptime = v6_bgp_neighbor_tbl.get_column_by_name("Up/Down")[index]
+                uptime = v6_bgp_neighbor_tbl.get_column_by_name(
+                    "Up/Down")[index]
                 enable = True if v6_bgp_neighbor_tbl.get_column_by_name(
                     "Admin state")[
                         index].lower().strip() == 'enable' else False
@@ -1663,10 +1707,10 @@ class AOSDriver(NetworkDriver):
                         bgp_neighbor_dict['Neighbor address'])
                     multihop = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     multipath = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     remove_private_as = False if str_filter(bgp_neighbor_dict[
                         'Neighbor remove private AS']) == 'disabled' else True
                     received_prefix_count = str_filter(
@@ -1766,10 +1810,10 @@ class AOSDriver(NetworkDriver):
                         bgp_neighbor_dict['Neighbor address'])
                     multihop = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     multipath = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     remove_private_as = False if str_filter(bgp_neighbor_dict[
                         'Neighbor remove private AS']) == 'disabled' else True
                     received_prefix_count = str_filter(
@@ -1909,10 +1953,10 @@ class AOSDriver(NetworkDriver):
                         bgp_neighbor_dict['Neighbor address'])
                     multihop = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     multipath = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     remove_private_as = False if str_filter(bgp_neighbor_dict[
                         'Neighbor remove private AS']) == 'disabled' else True
                     received_prefix_count = str_filter(
@@ -1922,7 +1966,7 @@ class AOSDriver(NetworkDriver):
                     ).lower() == 'disabled' else True
                     next_hop_self = False if str_filter(
                         bgp_neighbor_dict['Neighbor next hop self']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
 
                     peer = _PEER_FIELD_MAP_.copy()
                     peer.update({
@@ -1965,10 +2009,10 @@ class AOSDriver(NetworkDriver):
                         bgp_neighbor_dict['Neighbor address'])
                     multihop = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     multipath = False if str_filter(
                         bgp_neighbor_dict['Neighbor EBGP multiHop']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
                     remove_private_as = False if str_filter(bgp_neighbor_dict[
                         'Neighbor remove private AS']) == 'disabled' else True
                     received_prefix_count = str_filter(
@@ -1978,7 +2022,7 @@ class AOSDriver(NetworkDriver):
                     ).lower() == 'disabled' else True
                     next_hop_self = False if str_filter(
                         bgp_neighbor_dict['Neighbor next hop self']).lower(
-                        ) == 'disabled' else True
+                    ) == 'disabled' else True
 
                     peer = _PEER_FIELD_MAP_.copy()
                     peer.update({
@@ -2101,7 +2145,6 @@ class AOSDriver(NetworkDriver):
             optics_detail[iface] = iface_detail
 
         return optics_detail
-    
 
     def get_ipv6_neighbors_table(self):
         """
@@ -2144,7 +2187,7 @@ class AOSDriver(NetworkDriver):
         macs = ipv6_neighbors_table.get_column_by_name('Hardware Address')
         ages = ipv6_neighbors_table.get_column_by_name('Lifetime')
         states = ipv6_neighbors_table.get_column_by_name('Reachability')
-        
+
         for index, ipv6_addr in enumerate(ipv6_addrs):
             interface = interfaces[index]
             mac = macs[index]
@@ -2152,11 +2195,11 @@ class AOSDriver(NetworkDriver):
             state = states[index]
 
             neighbor_dict = {
-                'interface' : interface,
-                'mac'       : mac,
-                'ip'        : ipv6_addr,
-                'age'       : float(to_seconds(age)),
-                'state'     : state
+                'interface': interface,
+                'mac': mac,
+                'ip': ipv6_addr,
+                'age': float(to_seconds(age)),
+                'state': state
             }
             result.append(neighbor_dict)
 
@@ -2167,26 +2210,28 @@ class AOSDriver(NetworkDriver):
 
         command = 'show vlan'
         output = self.device.send_command(command)
-        command = 'show ip interface'
+        # command = 'show ip interface'
+        command = 'show vlan members'
         outputif = self.device.send_command(command)
-        command = 'show ipv6 interface'
-        outputifv6 = self.device.send_command(command)
+        # command = 'show ipv6 interface'
+        # outputifv6 = self.device.send_command(command)
 
         vlantable = AOSTable(output)
         iftable = AOSTable(outputif)
-        ifv6table = AOSTable(outputifv6)
+        # ifv6table = AOSTable(outputifv6)
 
         for index, vlan_name in enumerate(vlantable.get_column_by_name("name")):
             if_name = []
             vlan_id = vlantable.get_column_by_name("vlan")[index]
 
-            if "Ena" in vlantable.get_column_by_name("ip")[index]:
-                for index_if, if_device in enumerate(iftable.get_column_by_name("Device")):
-                    if ("vlan " + vlan_id) in if_device:
-                        if_name.append(iftable.get_column_by_name("Name")[index_if])
-                for index_ifv6, if_device in enumerate(ifv6table.get_column_by_name("Device")):
-                    if ("vlan " + vlan_id) in if_device:
-                        if_name.append(ifv6table.get_column_by_name("Name")[index_ifv6])
+            if "Ena" in vlantable.get_column_by_name("admin")[index]:
+                for index_if, if_device in enumerate(iftable.get_column_by_name("vlan")):
+                    if (vlan_id) in if_device:
+                        if_name.append([iftable.get_column_by_name("port")[
+                                       index_if], iftable.get_column_by_name("type")[index_if]])
+                # for index_ifv6, if_device in enumerate(ifv6table.get_column_by_name("Device")):
+                #     if ("vlan " + vlan_id) in if_device:
+                #         if_name.append(ifv6table.get_column_by_name("Name")[index_ifv6])
 
             vlans[vlan_id] = {
                 "name": vlan_name,
