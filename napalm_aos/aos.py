@@ -20,6 +20,7 @@ import uuid
 import tempfile
 import copy
 import os
+import re
 
 try:
     import napalm.base.constants as C
@@ -264,6 +265,18 @@ class AOSDriver(NetworkDriver):
 
     def get_facts(self):
         """Implementation of NAPALM method get_facts."""
+        # Example:
+        # {
+        # 'uptime': 151005.57332897186,
+        # 'vendor': u'Arista',
+        # 'os_version': u'4.14.3-2329074.gaatlantarel',
+        # 'serial_number': u'SN0123A34AS',
+        # 'model': u'vEOS',
+        # 'hostname': u'eos-router',
+        # 'fqdn': u'eos-router',
+        # 'interface_list': [u'Ethernet2', u'Management1', u'Ethernet1', u'Ethernet3']
+        # }
+
         system_info, chassis_info, interfaces = ({}, {}, [])
 
         show_sys = self.device.send_command('show system')
@@ -508,6 +521,7 @@ class AOSDriver(NetworkDriver):
             aid = iface_alias_table.get_id_by_value(0, iface)
             description = iface_alias_table.get_column_by_index(5)[
                 aid].replace('"', '')
+            chassis = re.split("/",iface)[0]
 
             if cid != -1:
                 speed_str = iface_capability_table.get_column_by_name('Speed')[
@@ -524,6 +538,7 @@ class AOSDriver(NetworkDriver):
             mtu: int = int(
                 raw_interfaces_dict[key]['Long Frame Size(Bytes)'].strip()[:-1])
             interfaces[iface] = {
+                'chassis': chassis,
                 'is_enabled': is_enabled,
                 'is_up': is_up,
                 'description': description,
@@ -535,7 +550,6 @@ class AOSDriver(NetworkDriver):
 
         # query linkaggs and add them to the interface list
         for index, lag_id in enumerate(linkagg_table.get_column_by_name("Number")):
-            # print(linkagg_table.get_column_by_name('Oper State')[index])
             if (linkagg_table.get_column_by_name('Oper State')[index] == 'UP'):
                 lag_ports = []
 
@@ -543,7 +557,6 @@ class AOSDriver(NetworkDriver):
 
                 for index_if, agg_port in enumerate(linkagg_port_table.get_column_by_name("Agg")):
                     if (lag_id) == agg_port:
-                        # print(linkagg_port_table.get_column_by_name("Chassis/Slot/Port")[index_if])
                         lag_ports.append(linkagg_port_table.get_column_by_name(
                             "Chassis/Slot/Port")[index_if])
 
