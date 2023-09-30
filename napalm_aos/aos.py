@@ -267,20 +267,66 @@ class AOSDriver(NetworkDriver):
         """Implementation of NAPALM method get_facts."""
         # Example:
         # {
-        # 'uptime': 151005.57332897186,
-        # 'vendor': u'Arista',
-        # 'os_version': u'4.14.3-2329074.gaatlantarel',
-        # 'serial_number': u'SN0123A34AS',
-        # 'model': u'vEOS',
-        # 'hostname': u'eos-router',
-        # 'fqdn': u'eos-router',
-        # 'interface_list': [u'Ethernet2', u'Management1', u'Ethernet1', u'Ethernet3']
+        #   "hostname": "eos-router",
+        #   "fqdn": "eos-router",
+        #   "vendor": "Arista",
+        #   "chassis_count": 2,
+        #   "chassis_info": [
+        #     {
+        #       "id": "1"
+        #       "model": "vEOS",
+        #       "serial_number": "SN0123A34AS",
+        #       "is_master" : 1
+        #       }
+        #     },
+        #     {
+        #      "id": "2": 
+        #       "model": "vEOS",
+        #       "serial_number": "SN098745612",
+        #       "is_master" : 0
+        #       }
+        #     }
+        #   ],
+        #   "os_version": "4.14.3-2329074.gaatlantarel",
+        #   "uptime": 151005.57332897186,
+        #   "interface_list": ["Ethernet2", "Management1", "Ethernet1", "Ethernet3"]
         # }
 
-        system_info, chassis_info, interfaces = ({}, {}, [])
+
+        system_info, chassis_info, interfaces = ({}, [], [])
 
         show_sys = self.device.send_command('show system')
-        show_chass = self.device.send_command('show chassis chassis-id 0')
+        
+        # count virtual chassis
+        show_chass = self.device.send_command("show virtual-chassis vf-link | awk '{print $1}'") 
+        chassis_table = AOSTable(show_chass)
+        chassis_count = chassis_table.count() if chassis_table.count() != 0 else 1
+
+        for chass in range(1,chassis_count+1):
+            show_chass = self.device.send_command('show chassis chassis-id ' + str(chass))
+
+            # Parse chassis info
+            m_role = re.findall(r'[Remote|Local] Chassis ID \d \((.*)\)', show_chass)[0]
+            m_model = re.findall(r'Model Name:\s*([^\n,?]+)', show_chass)
+            m_serial_num = re.findall(r'Serial Number:\s*([^\n,?]+)', show_chass)
+
+            model_name = m_model[0] if m_model else u''
+            serial_number = m_serial_num[0] if m_serial_num else u''
+
+            chassis_facts = { 
+              'id':str(chass)  ,
+              'model': model_name,
+              'serial_number': serial_number,
+              'is_master': 1 if m_role == "Master" else 0
+            }   
+
+            # entry={}
+            # entry[str(chass)] =  chassis_facts
+            entry =  chassis_facts
+
+            
+            chassis_info.append(entry)
+
         show_ip_inf = self.device.send_command(
             "show ip interface | awk '{print $1}'")
 
@@ -298,12 +344,6 @@ class AOSDriver(NetworkDriver):
         uptime_str = system_info["Up Time"]
         uptime = to_seconds(uptime_str)
 
-        # Parse chassis info
-        m_model = re.findall(r'Model Name:\s*([^\n,?]+)', show_chass)
-        m_serial_num = re.findall(r'Serial Number:\s*([^\n,?]+)', show_chass)
-
-        model_name = m_model[0] if m_model else u''
-        serial_number = m_serial_num[0] if m_serial_num else u''
 
         # Parse os version and vendor
         description = system_info['Description']
@@ -321,9 +361,12 @@ class AOSDriver(NetworkDriver):
         return {
             'hostname': system_info['Name'],
             'fqdn': u'',
+            # 'chassis_id': chassis_id,
             'vendor': vendor,
-            'model': model_name,
-            'serial_number': serial_number,
+            'chassis_count': chassis_count,
+            'chassis_info': chassis_info,
+            # 'model': model_name,
+            # 'serial_number': serial_number,
             'os_version': os_version,
             'uptime': uptime,
             'interface_list': interfaces,
