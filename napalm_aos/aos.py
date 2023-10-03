@@ -608,7 +608,7 @@ class AOSDriver(NetworkDriver):
                     'lag_ports': lag_ports,
                     'is_enabled': is_enabled,
                     'is_up': is_up,
-                    'description': "Linkagg "+lag_id,
+                    'description': "LAG "+lag_id,
                     'mac_address': None,
                     'last_flapped': last_flapped,
                     'mtu': None,
