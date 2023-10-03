@@ -76,6 +76,9 @@ class AOSTable:
     def isEmpty(self):
         return True if len(self.table) == 0 else False
 
+    def count(self):
+        return len(self.get_column_by_index(0)) 
+
     def __table2dict(self, stdin):
         result = {}
         try:
